@@ -3,7 +3,7 @@
 
 #include "Types.h"
 
-#include <Float.h>
+#include <float.h>
 #include <math.h>
 
 #define PI (3.14159265359f)
@@ -27,14 +27,14 @@ struct Float3
 {
     Float3() = default;
 
-    Float3(Float Single)
+    explicit Float3(Float Single)
         : x(Single)
         , y(Single)
         , z(Single)
     {
     }
 
-    Float3(Float InX, Float InY, Float InZ)
+    explicit Float3(Float InX, Float InY, Float InZ)
         : x(InX)
         , y(InY)
         , z(InZ)
@@ -131,7 +131,7 @@ struct Float4
 {
     Float4() = default;
 
-    Float4(Float Single)
+    explicit Float4(Float Single)
         : x(Single)
         , y(Single)
         , z(Single)
@@ -139,7 +139,7 @@ struct Float4
     {
     }
 
-    Float4(Float InX, Float InY, Float InZ, Float InW)
+    explicit Float4(Float InX, Float InY, Float InZ, Float InW)
         : x(InX)
         , y(InY)
         , z(InZ)
@@ -228,33 +228,19 @@ inline Float4 operator/(Float4 LHS, Float4 RHS)
     return Float4(LHS.x / RHS.x, LHS.y / RHS.y, LHS.z / RHS.z, LHS.w / RHS.w);
 }
 
-Float DistributionGGX(Float3 N, Float3 H, float Roughness)
+inline Float Lerp(Float v0, Float v1, Float t) 
 {
-    Float Alpha  = Roughness * Roughness;
-    Float Alpha2 = Alpha * Alpha;
-    Float NDotH  = Max(Dot(N, H), 0.0000001f);
-    Float Denominator = NDotH * NDotH * (Alpha2 - 1.0f) + 1.0f;
-    return Alpha2 / Max(PI * Denominator * Denominator, 0.0000001f);
+    return (1.0f - t) * v0 + t * v1;
 }
 
-Float3 FresnelSchlick(Float3 F0, Float3 V, Float3 H)
+inline Float3 Lerp(Float3 v0, Float3 v1, Float t) 
 {
-    Float VDotH = Max(Dot(V, H), 0.0000001f);
-    Float Exp   = (-5.55473f * VDotH - 6.98316f) * VDotH;
-    return F0 + (1.0f - F0) * exp2(Exp);
+    return (1.0f - t) * v0 + t * v1;
 }
 
-Float GeometrySmithGGX1(Float3 N, Float3 V, Float3 H, float Roughness)
+inline Float4 Lerp(Float4 v0, Float4 v1, Float t) 
 {
-    Float Roughness1 = Roughness + 1;
-    Float K     = (Roughness1 * Roughness1) / 8.0f;
-    Float NDotV = Max(Dot(N, V), 0.0000001f);
-    return NDotV / Max(NDotV * (1.0f - K) + K, 0.0000001f);
-}
-
-Float GeometrySmithGGX(Float3 N, Float3 L, Float3 V, Float3 H, float Roughness)
-{
-    return GeometrySmithGGX1(N, L, H, Roughness) * GeometrySmithGGX1(N, V, H, Roughness);
+    return (1.0f - t) * v0 + t * v1;
 }
 
 #endif
