@@ -71,6 +71,15 @@ struct Plane
 
 struct Material
 {
+    Material() = default;
+
+    Material(Float4 InAlbedo, Float InRoughness, Float InMetallic)
+        : Albedo(InAlbedo)
+        , Roughness(InRoughness)
+        , Metallic(InMetallic) 
+    {
+    }
+
     Float4 Albedo    = Float4(1.0f, 1.0f, 1.0f, 1.0f);
     Float  Roughness = 1.0f;
     Float  Metallic  = 1.0f;
