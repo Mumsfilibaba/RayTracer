@@ -43,14 +43,49 @@ struct BitmapHeader
 
 struct Sphere
 {
-    Sphere(Float3 InPosition, Float InRadius)
+    Sphere(Float3 InPosition, Float InRadius, UInt32 InMaterialIndex)
         : Position(InPosition)
         , Radius(InRadius)
+        , MaterialIndex(InMaterialIndex)
     {
     }
 
     Float3 Position;
     Float  Radius;
+    UInt32 MaterialIndex;
+};
+
+struct Plane
+{
+    Plane(Float3 InNormal, Float InOffset, UInt32 InMaterialIndex)
+        : Normal(Normalize(InNormal))
+        , Offset(InOffset)
+        , MaterialIndex(InMaterialIndex)
+    {
+    }
+
+    Float3 Normal;
+    Float  Offset;
+    UInt32 MaterialIndex;
+};
+
+struct Material
+{
+    Float4 Albedo    = Float4(1.0f, 1.0f, 1.0f, 1.0f);
+    Float  Roughness = 1.0f;
+    Float  Metallic  = 1.0f;
+};
+
+struct PointLight
+{
+    PointLight(Float4 InColor, Float3 InPosition)
+        : Color(InColor)
+        , Position(InPosition)
+    {
+    }
+
+    Float4 Color = Float4(1.0f, 1.0f, 1.0f, 1.0f);
+    Float3 Position;
 };
 
 struct World
@@ -59,6 +94,22 @@ struct World
 
     Sphere* Spheres    = nullptr;
     UInt32  NumSpheres = 0;
+
+    Plane* Planes    = nullptr;
+    UInt32 NumPlanes = 0;
+
+    Material* Materals     = nullptr;
+    UInt32    NumMaterials = 0;
+
+    PointLight* PointLights    = nullptr;
+    UInt32      NumPointLights = 0;
+};
+
+struct PayLoad
+{
+    Float  t;
+    UInt32 MaterialIndex;
+    Float3 Normal;
 };
 
 #endif
