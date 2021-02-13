@@ -73,16 +73,16 @@ struct Material
 {
     Material() = default;
 
-    Material(Float4 InAlbedo, Float InRoughness, Float InMetallic)
+    Material(Float4 InAlbedo, Bool InMetal, Float InRoughness)
         : Albedo(InAlbedo)
+        , Metal(InMetal)
         , Roughness(InRoughness)
-        , Metallic(InMetallic) 
     {
     }
 
-    Float4 Albedo    = Float4(1.0f, 1.0f, 1.0f, 1.0f);
-    Float  Roughness = 1.0f;
-    Float  Metallic  = 1.0f;
+    Float4 Albedo    = Float4(1.0f);
+    Bool   Metal     = false;
+    Float  Roughness = 0.0f;
 };
 
 struct PointLight
@@ -93,7 +93,7 @@ struct PointLight
     {
     }
 
-    Float4 Color = Float4(1.0f, 1.0f, 1.0f, 1.0f);
+    Float4 Color = Float4(1.0f);
     Float3 Position;
 };
 

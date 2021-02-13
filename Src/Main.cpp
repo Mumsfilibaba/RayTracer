@@ -5,7 +5,7 @@
 #include "Core.h"
 #include "Lighting.h"
 
-#define NUM_SAMPLES 32
+#define NUM_SAMPLES 64
 
 Image* CreateImage(UInt32 Width, UInt32 Height)
 {
@@ -128,72 +128,51 @@ void TraceRay(World* World, PayLoad* PayLoad, Float3 RayOrigin, Float3 RayDirect
     }
 }
 
-Float4 CastRay(World* World, Float3 RayOrigin, Float3 RayDirection)
+Float4 CastRay(World* World, Float3 RayOrigin, Float3 RayDirection, UInt32 Depth)
 {
-    Float4 Result = Float4(0.0f, 1.0f, 1.0f, 1.0f);
-
-    PayLoad InitalPayLoad;
-    InitalPayLoad.t             = FLT_MAX;
-    InitalPayLoad.MaterialIndex = UINT_MAX;
-    TraceRay(World, &InitalPayLoad, RayOrigin, RayDirection);
-
-    if (InitalPayLoad.MaterialIndex != UINT_MAX)
+    if (Depth > 32)
     {
-        Material* Mat = &World->Materals[InitalPayLoad.MaterialIndex];
-
-        Float4 Albedo        = Mat->Albedo;
-        Float3 WorldPosition = RayOrigin + RayDirection * InitalPayLoad.t;
-        Float3 N = Normalize(InitalPayLoad.Normal);
-        Float3 V = Normalize(RayOrigin - WorldPosition);
-
-        Float4 F0 = Float4(0.04f);
-        F0 = Lerp(F0, Albedo, Mat->Metallic);
-
-        Float4 L0 = Float4(0.0f);
-        for (UInt32 i = 0; i < World->NumPointLights; i++)
-        {
-            PointLight* PointLight = &World->PointLights[i];
-
-            PayLoad ShadowPayLoad;
-            ShadowPayLoad.t             = FLT_MAX;
-            ShadowPayLoad.MaterialIndex = UINT_MAX;
-
-            Float3 L = PointLight->Position - WorldPosition;
-            Float3 ShadowOrigin = WorldPosition + (N * 0.01f);
-            Float3 ShadowDir    = Normalize(L);
-            TraceRay(World, &ShadowPayLoad, ShadowOrigin, ShadowDir);
-
-            if (ShadowPayLoad.t == FLT_MAX)
-            {
-                Float Distance = Length(L);
-                L = Normalize(L);
-                Float3 H = Normalize(V + L);
-
-                Float  Attenuation = 1.0f / (Distance * Distance);
-                Float4 Radiance    = PointLight->Color * Attenuation;
-
-                // Lambertian BRDF
-                Float4 Diffuse = Albedo / PI;
-
-                // Cook-Torrance Specular BRDF
-                Float4 F = FresnelSchlick(F0, Max(Dot(V, H), 0.0));
-                Float4 Numerator   = DistributionGGX(N, H, Mat->Roughness) * F * GeometrySmithGGX(N, L, V, Mat->Roughness);
-                Float  Denominator = 4.0f * Max(Dot(N, L), 0.0f) * Max(Dot(N, V), 0.0f);
-                Float4 Specular    = Numerator / Max(Denominator, Epsilon);
-
-                Float4 Ks = F;
-                Float4 Kd = (Float4(1.0f) - Ks) * (1.0f - Mat->Metallic);
-
-                Float NDotL = Max(Dot(L, N), 0.0f);
-                L0 = L0 + ((Kd * Diffuse) + (Ks * Specular)) * Radiance * NDotL;
-            }
-        }
-
-        Float4 Ambient = (Albedo * 0.03f);
-        Result = L0 + Ambient;
+        return Float4(0.0f, 0.0f, 0.0f, 1.0f);
     }
 
-    return Result;
+    PayLoad PayLoad;
+    PayLoad.t             = FLT_MAX;
+    PayLoad.MaterialIndex = UINT_MAX;
+    TraceRay(World, &PayLoad, RayOrigin, RayDirection);
+
+    if (PayLoad.MaterialIndex != UINT_MAX)
+    {
+        Material* Mat = &World->Materals[PayLoad.MaterialIndex];
+        Float4 Albedo = Mat->Albedo;
+
+        Float3 N = Normalize(PayLoad.Normal);
+        Float3 Position  = RayOrigin + RayDirection * PayLoad.t;
+        Float3 NewOrigin = Position + (N * 0.00001f);
+        
+        if (!Mat->Metal)
+        {
+            Float3 Target = Position + RandomHemisphereFloat3(N);
+            Float3 NewDir = Normalize(Target - Position);
+            return Albedo * CastRay(World, NewOrigin, NewDir, Depth + 1);
+        }
+        else
+        {
+            Float3 Reflection = Reflect(Normalize(RayDirection), N);
+            Reflection = Reflection + (Mat->Roughness * RandomUnitFloat3());
+            Reflection = Normalize(Reflection);
+
+            if (Dot(Reflection, N) > 0)
+            {
+                return Albedo * CastRay(World, NewOrigin, Reflection, Depth + 1);
+            }
+            else
+            {
+                return Float4(0.0f, 0.0f, 0.0f, 1.0f);
+            }
+        }
+    }
+    
+    return Float4(0.39f, 0.58f, 0.92f, 1.0f);
 }
 
 void RenderImage(Image* Output, World* World)
@@ -238,12 +217,12 @@ void RenderImage(Image* Output, World* World)
 
                 Float3 PixelLocation = FilmCenter + (FilmX * HalfFilmWidth) * CameraX + (FilmY * HalfFilmHeight) * CameraY;
                 Float3 RayDirection  = Normalize(PixelLocation - RayOrigin);
-                Color = Color + CastRay(World, RayOrigin, RayDirection);
+                Color = Color + CastRay(World, RayOrigin, RayDirection, 0);
             }
 
             Color = Color / Float(SamplesPerPixel);
-            Color = Color / (Color + Float4(1.0f));
-            Color = Saturate(Pow(Color, Float4(1.0f / 2.0f)));
+            //Color = Color / (Color + Float4(1.0f));
+            Color = Saturate(Pow(Color, Float4(1.0f / 2.2f)));
             Output->Pixels[y * Output->Width + x] = ConvertFloat4ToUInt(Color);
         }
 
@@ -255,90 +234,33 @@ void RenderImage(Image* Output, World* World)
 
 int main(int Argc, const char* Args[])
 {
-    UInt32 Width  = 1920;
-    UInt32 Height = 1080;
+    UInt32 Width  = 3840;
+    UInt32 Height = 2160;
 
     Image* Output = CreateImage(Width, Height);
     
-    //Sphere Spheres[] = 
-    //{
-    //    Sphere(Float3( 0.0f, 0.6f, 0.0f), 0.5f, 0),
-    //    Sphere(Float3( 1.25f, 0.6f, 1.25f), 0.5f, 1),
-    //    Sphere(Float3(-1.25f, 0.6f, 1.25f), 0.5f, 2),
-    //    Sphere(Float3(-2.0f, 1.25f,-2.0f), 0.75f, 0)
-    //};
-
     Sphere Spheres[] = 
     {
-        Sphere(Float3(-3.0f, 0.5f, 0.0f), 0.25f, 1),
-        Sphere(Float3(-2.4f, 0.5f, 0.0f), 0.25f, 2),
-        Sphere(Float3(-1.8f, 0.5f, 0.0f), 0.25f, 3),
-        Sphere(Float3(-1.2f, 0.5f, 0.0f), 0.25f, 4),
-        Sphere(Float3(-0.6f, 0.5f, 0.0f), 0.25f, 5),
-        Sphere(Float3( 0.0f, 0.5f, 0.0f), 0.25f, 6),
-        Sphere(Float3( 0.6f, 0.5f, 0.0f), 0.25f, 7),
-        Sphere(Float3( 1.2f, 0.5f, 0.0f), 0.25f, 8),
-        Sphere(Float3( 1.8f, 0.5f, 0.0f), 0.25f, 9),
-        Sphere(Float3( 2.4f, 0.5f, 0.0f), 0.25f, 10),
-
-        Sphere(Float3(-3.0f, 1.0f, 1.0f), 0.25f, 11),
-        Sphere(Float3(-2.4f, 1.0f, 1.0f), 0.25f, 12),
-        Sphere(Float3(-1.8f, 1.0f, 1.0f), 0.25f, 13),
-        Sphere(Float3(-1.2f, 1.0f, 1.0f), 0.25f, 14),
-        Sphere(Float3(-0.6f, 1.0f, 1.0f), 0.25f, 15),
-        Sphere(Float3( 0.0f, 1.0f, 1.0f), 0.25f, 16),
-        Sphere(Float3( 0.6f, 1.0f, 1.0f), 0.25f, 17),
-        Sphere(Float3( 1.2f, 1.0f, 1.0f), 0.25f, 18),
-        Sphere(Float3( 1.8f, 1.0f, 1.0f), 0.25f, 19),
-        Sphere(Float3( 2.4f, 1.0f, 1.0f), 0.25f, 20),
+        Sphere(Float3( 0.0f,  0.2f,  0.0f),  0.5f,  0),
+        Sphere(Float3( 1.25f, 0.2f,  1.25f), 0.5f,  1),
+        Sphere(Float3(-1.25f, 0.2f,  1.25f), 0.5f,  2),
+        Sphere(Float3(-2.0f,  1.25f,-2.0f),  0.75f, 0),
+        Sphere(Float3( 2.0f,  1.25f,-2.0f),  0.75f, 3),
+        Sphere(Float3( 0.0f,  3.0f,  2.0f),  2.0f,  1),
     };
 
     Plane Planes[] =
     {
-        Plane(Float3(0.0f, 1.0f, 0.0f), -0.25f, 0),
+        Plane(Float3(0.0f, 1.0f, 0.0f), -0.25f, 4),
     };
-
-    //Material Materials[] =
-    //{
-    //    Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.0f, 0.0f),
-    //    Material(Float4(0.0f, 1.0f, 0.0f, 1.0f), 0.5f, 0.0f),
-    //    Material(Float4(0.0f, 0.0f, 1.0f, 1.0f), 1.0f, 0.0f),
-    //    Material(Float4(0.5f, 0.5f, 0.5f, 1.0f), 1.0f, 0.0f)
-    //};
 
     Material Materials[] =
     {
-        Material(Float4(1.0f, 1.0f, 1.0f, 1.0f), 1.0f, 0.0f),
-        
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.1f, 0.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.2f, 0.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.3f, 0.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.4f, 0.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.5f, 0.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.6f, 0.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.7f, 0.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.8f, 0.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.9f, 0.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 1.0f, 0.0f),
-
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.1f, 1.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.2f, 1.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.3f, 1.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.4f, 1.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.5f, 1.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.6f, 1.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.7f, 1.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.8f, 1.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 0.9f, 1.0f),
-        Material(Float4(1.0f, 0.0f, 0.0f, 1.0f), 1.0f, 1.0f),
-    };
-    
-    PointLight PointLights[] =
-    {
-        PointLight(Float4(100.0f), Float3( 3.5f, 5.0f, 2.0f)),
-        PointLight(Float4(100.0f), Float3(-3.5f, 5.0f, 2.0f)),
-        PointLight(Float4(100.0f), Float3( 3.5f, 5.0f,-2.0f)),
-        PointLight(Float4(100.0f), Float3(-3.5f, 5.0f,-2.0f)),
+        Material(Float4(1.0f,  0.05f, 0.05f, 1.0f), false, 0.0f),
+        Material(Float4(1.0f,  1.0f,  1.0f,  1.0f), true,  0.0f),
+        Material(Float4(1.0f,  1.0f,  1.0f,  1.0f), true,  0.1f),
+        Material(Float4(1.0f,  1.0f,  1.0f,  1.0f), true,  0.2f),
+        Material(Float4(0.56f, 0.93f, 0.56f, 1.0f), true,  0.1f),
     };
     
     World World;
@@ -348,9 +270,7 @@ int main(int Argc, const char* Args[])
     World.NumPlanes      = ArrayCount(Planes);
     World.Materals       = Materials;
     World.NumMaterials   = ArrayCount(Materials);
-    World.PointLights    = PointLights;
-    World.NumPointLights = ArrayCount(PointLights);
-    World.CameraPosition = Float3(-0.25f, 1.5f, -3.5f);
+    World.CameraPosition = Float3(0.0f, 2.0f, -7.0f);
     
     RenderImage(Output, &World);
 
@@ -363,7 +283,6 @@ int main(int Argc, const char* Args[])
         printf("Failed to write image to file\n");
     }
  
-
     delete Output;
     return 0;
 }

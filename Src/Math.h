@@ -86,7 +86,6 @@ inline Float3 Saturate(Float3 v)
     return Min(Max(v, Float3(0.0f, 0.0f, 0.0f)), Float3(1.0f, 1.0f, 1.0f));
 }
 
-
 inline Float Dot(Float3 LHS, Float3 RHS)
 {
     return LHS.x * RHS.x + LHS.y * RHS.y + LHS.z * RHS.z;
@@ -125,6 +124,27 @@ inline Float3 operator*(Float3 LHS, Float3 RHS)
 inline Float3 operator/(Float3 LHS, Float3 RHS)
 {
     return Float3(LHS.x / RHS.x, LHS.y / RHS.y, LHS.z / RHS.z);
+}
+
+inline Float3 Reflect(Float3 v, Float3 n)
+{
+    return v - (2.0f * Dot(v, n) * n);
+}
+
+inline Float3 RandomFloat3()
+{
+    return Float3(RandomFloat(), RandomFloat(), RandomFloat());
+}
+
+inline Float3 RandomUnitFloat3()
+{
+    return Normalize(RandomFloat3());
+}
+
+inline Float3 RandomHemisphereFloat3(Float3 n)
+{
+    Float3 v = RandomUnitFloat3();
+    return Dot(v, n) > 0.0f ? v : -v;
 }
 
 struct Float4
@@ -241,6 +261,11 @@ inline Float3 Lerp(Float3 v0, Float3 v1, Float t)
 inline Float4 Lerp(Float4 v0, Float4 v1, Float t) 
 {
     return (1.0f - t) * v0 + t * v1;
+}
+
+inline Float4 RandomFloat4()
+{
+    return Float4(RandomFloat(), RandomFloat(), RandomFloat(), RandomFloat());
 }
 
 #endif
