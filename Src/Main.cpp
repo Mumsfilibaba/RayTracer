@@ -9,7 +9,7 @@
 #include "Core.h"
 #include "Lighting.h"
 
-#define NUM_SAMPLES 32
+#define NUM_SAMPLES 16
 
 Image* CreateImage(UInt32 Width, UInt32 Height)
 {
@@ -75,15 +75,15 @@ void TraceRay(World* World, PayLoad* PayLoad, Float3 RayOrigin, Float3 RayDirect
 
         Float3 Distance = RayOrigin - Sp->Position;
         Float a = Dot(RayDirection, RayDirection);
-        Float b = 2.0f * Dot(RayDirection, Distance);
-        Float c = Dot(Distance, Distance) - pow(Sp->Radius, 2.0f);
+        Float b = Dot(RayDirection, Distance);
+        Float c = Dot(Distance, Distance) - (Sp->Radius * Sp->Radius);
 
-        Float Disc = (b * b) - (4.0f * a * c);
+        Float Disc = (b * b) - (a * c);
         if (Disc >= 0)
         {
             Float Root = sqrt(Disc);
-            Float t0 = (-b + Root) / (2.0f * a);
-            Float t1 = (-b - Root) / (2.0f * a);
+            Float t0 = (-b + Root) / a;
+            Float t1 = (-b - Root) / a;
             
             if (t0 > t1)
             {
@@ -102,8 +102,9 @@ void TraceRay(World* World, PayLoad* PayLoad, Float3 RayOrigin, Float3 RayDirect
                 PayLoad->MaterialIndex = Sp->MaterialIndex;
                 PayLoad->t = t0;
 
-                Float3 Position = RayOrigin + RayDirection * t0;
-                PayLoad->Normal = Normalize(Position - Sp->Position);
+                Float3 Position    = RayOrigin + RayDirection * t0;
+                PayLoad->Normal    = (Position - Sp->Position) / Sp->Radius;
+                PayLoad->FrontFace = (Dot(RayDirection, PayLoad->Normal) < 0.0f);
             }
         }
     }
@@ -153,7 +154,15 @@ Float4 CastRay(World* World, Float3 RayOrigin, Float3 RayDirection, UInt32 Depth
         Float3 Position  = RayOrigin + RayDirection * PayLoad.t;
         Float3 NewOrigin = Position + (N * 0.00001f);
         
-        if (!Mat->Metal)
+        if (Mat->Refracting)
+        {
+            const Float ir = 1.5f;
+            Float  RefractionRatio = PayLoad.FrontFace ? (1.0 / ir) : ir;
+            Float3 UnitDirection   = Normalize(RayDirection);
+            Float3 Refracted       = Normalize(Refract(UnitDirection, N, RefractionRatio));
+            return Float4(1.0f) * CastRay(World, NewOrigin, Refracted, Depth + 1);
+        }
+        else if (!Mat->Metal)
         {
             Float3 Target = Position + RandomHemisphereFloat3(N);
             Float3 NewDir = Normalize(Target - Position);
@@ -257,7 +266,7 @@ int main(int Argc, const char* Args[])
         Sphere(Float3( 0.0f,  0.2f,  0.0f),  0.5f,  0),
         Sphere(Float3( 1.25f, 0.2f,  1.25f), 0.5f,  1),
         Sphere(Float3(-1.25f, 0.2f,  1.25f), 0.5f,  2),
-        Sphere(Float3(-2.0f,  1.25f,-2.0f),  0.75f, 0),
+        Sphere(Float3(-2.0f,  1.25f,-2.0f),  0.75f, 5),
         Sphere(Float3( 2.0f,  1.25f,-2.0f),  0.75f, 3),
         Sphere(Float3( 0.0f,  3.0f,  2.0f),  2.0f,  1),
     };
@@ -269,11 +278,12 @@ int main(int Argc, const char* Args[])
 
     Material Materials[] =
     {
-        Material(Float4(1.0f,  0.05f, 0.05f, 1.0f), false, 0.0f),
-        Material(Float4(1.0f,  1.0f,  1.0f,  1.0f), true,  0.0f),
-        Material(Float4(1.0f,  1.0f,  1.0f,  1.0f), true,  0.1f),
-        Material(Float4(1.0f,  1.0f,  1.0f,  1.0f), true,  0.2f),
-        Material(Float4(0.56f, 0.93f, 0.56f, 1.0f), true,  0.1f),
+        Material(Float4(1.0f,  0.05f, 0.05f, 1.0f), false, 0.0f, false),
+        Material(Float4(1.0f,  1.0f,  1.0f,  1.0f), true,  0.0f, false),
+        Material(Float4(1.0f,  1.0f,  1.0f,  1.0f), true,  0.1f, false),
+        Material(Float4(1.0f,  1.0f,  1.0f,  1.0f), true,  0.2f, false),
+        Material(Float4(0.56f, 0.93f, 0.56f, 1.0f), true,  0.1f, false),
+        Material(Float4(0.56f, 0.93f, 0.56f, 1.0f), false,  0.1f, true),
     };
     
     World World;

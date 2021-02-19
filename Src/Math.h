@@ -131,6 +131,14 @@ inline Float3 Reflect(Float3 v, Float3 n)
     return v - (2.0f * Dot(v, n) * n);
 }
 
+inline Float3 Refract(Float3 v, Float3 n, Float EtaiOverEtat)
+{
+    Float  CosTheta = Min(Dot(-v, n), 1.0f);
+    Float3 OutPerpendicular = EtaiOverEtat * (v + (CosTheta * n));
+    Float3 OutParallel      = -sqrtf(fabs(1.0f - Dot(OutPerpendicular, OutPerpendicular))) * n;
+    return OutPerpendicular + OutParallel;
+}
+
 inline Float3 RandomFloat3()
 {
     return Float3(RandomFloat(), RandomFloat(), RandomFloat());

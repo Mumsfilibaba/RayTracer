@@ -73,16 +73,18 @@ struct Material
 {
     Material() = default;
 
-    Material(Float4 InAlbedo, Bool InMetal, Float InRoughness)
+    Material(Float4 InAlbedo, Bool InMetal, Float InRoughness, Bool InRefracting)
         : Albedo(InAlbedo)
         , Metal(InMetal)
         , Roughness(InRoughness)
+        , Refracting(InRefracting)
     {
     }
 
-    Float4 Albedo    = Float4(1.0f);
-    Bool   Metal     = false;
-    Float  Roughness = 0.0f;
+    Float4 Albedo     = Float4(1.0f);
+    Bool   Metal      = false;
+    Bool   Refracting = false;
+    Float  Roughness  = 0.0f;
 };
 
 struct PointLight
@@ -119,6 +121,7 @@ struct PayLoad
     Float  t;
     UInt32 MaterialIndex;
     Float3 Normal;
+    Bool   FrontFace;
 };
 
 #endif
