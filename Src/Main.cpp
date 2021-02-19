@@ -2,10 +2,14 @@
 #include <stdio.h>
 #include <limits.h>
 
+#include <thread>
+#include <atomic>
+#include <vector>
+
 #include "Core.h"
 #include "Lighting.h"
 
-#define NUM_SAMPLES 64
+#define NUM_SAMPLES 32
 
 Image* CreateImage(UInt32 Width, UInt32 Height)
 {
@@ -175,34 +179,43 @@ Float4 CastRay(World* World, Float3 RayOrigin, Float3 RayDirection, UInt32 Depth
     return Float4(0.39f, 0.58f, 0.92f, 1.0f);
 }
 
-void RenderImage(Image* Output, World* World)
+std::atomic_int32_t gCurrentY;
+
+Image* gOutput = nullptr;
+World* gWorld  = nullptr;
+
+void RenderImage()
 {
+    printf("Test");
+
     Float3 CameraZ = Normalize(Float3(0.0f, 0.0f, 1.0f));
     Float3 CameraX = Normalize(Cross(Float3(0.0f, 1.0f, 0.0f), CameraZ));
     Float3 CameraY = Normalize(Cross(CameraZ, CameraX));
 
     Float FilmDistance = 1.0f;
-    Float FilmWidth  = 2.0f;
-    Float FilmHeight = 2.0f;
-    if (Output->Width > Output->Height)
+    Float FilmWidth    = 2.0f;
+    Float FilmHeight   = 2.0f;
+    if (gOutput->Width > gOutput->Height)
     {
-        FilmHeight = FilmWidth * (Float(Output->Height) / Float(Output->Width));
+        FilmHeight = FilmWidth * (Float(gOutput->Height) / Float(gOutput->Width));
     }
-    else if (Output->Height > Output->Width)
+    else if (gOutput->Height > gOutput->Width)
     {
-        FilmWidth = FilmHeight * (Float(Output->Width) / Float(Output->Height));
+        FilmWidth = FilmHeight * (Float(gOutput->Width) / Float(gOutput->Height));
     }
 
     Float HalfFilmWidth  = 0.5f * FilmWidth;
     Float HalfFilmHeight = 0.5f * FilmHeight;
 
-    Float3 RayOrigin  = World->CameraPosition;
-    Float3 FilmCenter = World->CameraPosition + (FilmDistance * CameraZ);
+    Float3 RayOrigin  = gWorld->CameraPosition;
+    Float3 FilmCenter = gWorld->CameraPosition + (FilmDistance * CameraZ);
 
     const UInt32 SamplesPerPixel = NUM_SAMPLES;
-    for (UInt32 y = 0; y < Output->Height; y++)
+    for (UInt32 y = gCurrentY++; y < gOutput->Height;)
     {
-        for (UInt32 x = 0; x < Output->Width; x++)
+        printf("\rRayTracing Row %d", y);
+
+        for (UInt32 x = 0; x < gOutput->Width; x++)
         {
             Float4 Color;
             for (UInt32 i = 0; i < SamplesPerPixel; i++)
@@ -212,21 +225,21 @@ void RenderImage(Image* Output, World* World)
                 Float OffsetY = RandomFloat() / 2.0f;
                 Float PixelY  = Float(y) + 0.5f + OffsetX;
                 Float PixelX  = Float(x) + 0.5f + OffsetY;
-                Float FilmX   = -1.0f + (2.0f * (PixelX / Output->Width));
-                Float FilmY   = -1.0f + (2.0f * (PixelY / Output->Height));
+                Float FilmX   = -1.0f + (2.0f * (PixelX / gOutput->Width));
+                Float FilmY   = -1.0f + (2.0f * (PixelY / gOutput->Height));
 
                 Float3 PixelLocation = FilmCenter + (FilmX * HalfFilmWidth) * CameraX + (FilmY * HalfFilmHeight) * CameraY;
                 Float3 RayDirection  = Normalize(PixelLocation - RayOrigin);
-                Color = Color + CastRay(World, RayOrigin, RayDirection, 0);
+                Color = Color + CastRay(gWorld, RayOrigin, RayDirection, 0);
             }
 
             Color = Color / Float(SamplesPerPixel);
             //Color = Color / (Color + Float4(1.0f));
             Color = Saturate(Pow(Color, Float4(1.0f / 2.2f)));
-            Output->Pixels[y * Output->Width + x] = ConvertFloat4ToUInt(Color);
+            gOutput->Pixels[y * gOutput->Width + x] = ConvertFloat4ToUInt(Color);
         }
 
-        printf("\rRayTracing Row %d", y);
+        y = gCurrentY++;
     }
 
     printf("\n");
@@ -234,8 +247,8 @@ void RenderImage(Image* Output, World* World)
 
 int main(int Argc, const char* Args[])
 {
-    UInt32 Width  = 3840;
-    UInt32 Height = 2160;
+    UInt32 Width  = 1920;
+    UInt32 Height = 1080;
 
     Image* Output = CreateImage(Width, Height);
     
@@ -272,7 +285,36 @@ int main(int Argc, const char* Args[])
     World.NumMaterials   = ArrayCount(Materials);
     World.CameraPosition = Float3(0.0f, 2.0f, -7.0f);
     
-    RenderImage(Output, &World);
+    gCurrentY = -1;
+
+    UInt32 ThreadCount = std::thread::hardware_concurrency() - 1;
+
+    printf("Starting Threads\n");
+
+    gOutput = Output;
+    gWorld  = &World;
+
+    // Start workers
+    std::vector<std::thread> Threads;
+    for (UInt32 i = 0; i < ThreadCount; i++)
+    {
+        printf("Starting Thread %d\n", i);
+        Threads.push_back(std::thread(RenderImage));
+    }
+    
+    // Let the main thread also render
+    RenderImage();
+
+    // Stop workers
+    for (UInt32 i = 0; i < ThreadCount; i++)
+    {
+        printf("Joining Thread %d\n", i);
+
+        if (Threads[i].joinable())
+        {
+            Threads[i].join();
+        }
+    }
 
     if (WriteImage(Output))
     {
