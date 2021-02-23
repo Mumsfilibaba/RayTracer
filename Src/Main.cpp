@@ -9,7 +9,9 @@
 #include "Core.h"
 #include "Lighting.h"
 
-#define NUM_SAMPLES 16
+#define WIDTH       (2560)
+#define HEIGHT      (1440)
+#define NUM_SAMPLES (128)
 
 Image* CreateImage(UInt32 Width, UInt32 Height)
 {
@@ -102,9 +104,18 @@ void TraceRay(World* World, PayLoad* PayLoad, Float3 RayOrigin, Float3 RayDirect
                 PayLoad->MaterialIndex = Sp->MaterialIndex;
                 PayLoad->t = t0;
 
-                Float3 Position    = RayOrigin + RayDirection * t0;
-                PayLoad->Normal    = (Position - Sp->Position) / Sp->Radius;
-                PayLoad->FrontFace = (Dot(RayDirection, PayLoad->Normal) < 0.0f);
+                Float3 Position      = RayOrigin + RayDirection * t0;
+                Float3 OutsideNormal = Normalize((Position - Sp->Position) / Sp->Radius);
+                if (Dot(RayDirection, OutsideNormal) > 0.0f)
+                {
+                    PayLoad->Normal    = -OutsideNormal;
+                    PayLoad->FrontFace = false;
+                }
+                else
+                {
+                    PayLoad->Normal    = OutsideNormal;
+                    PayLoad->FrontFace = true;
+                }
             }
         }
     }
@@ -125,8 +136,9 @@ void TraceRay(World* World, PayLoad* PayLoad, Float3 RayOrigin, Float3 RayDirect
                 if (t < PayLoad->t)
                 {
                     PayLoad->MaterialIndex = Plane->MaterialIndex;
-                    PayLoad->t = t;
-                    PayLoad->Normal = Normalize(Plane->Normal);
+                    PayLoad->t             = t;
+                    PayLoad->Normal        = Normalize(Plane->Normal);
+                    PayLoad->FrontFace     = true;
                 }
             }
         }
@@ -137,7 +149,7 @@ Float4 CastRay(World* World, Float3 RayOrigin, Float3 RayDirection, UInt32 Depth
 {
     if (Depth > 32)
     {
-        return Float4(0.0f, 0.0f, 0.0f, 1.0f);
+        return Float4(0.5f, 0.5f, 0.5f, 1.0f);
     }
 
     PayLoad PayLoad;
@@ -152,11 +164,17 @@ Float4 CastRay(World* World, Float3 RayOrigin, Float3 RayDirection, UInt32 Depth
 
         Float3 N = Normalize(PayLoad.Normal);
         Float3 Position  = RayOrigin + RayDirection * PayLoad.t;
-        Float3 NewOrigin = Position + (N * 0.00001f);
+        Float3 Offset    = N * 0.00001f;
+        Float3 NewOrigin = Position + Offset;
         
         if (Mat->Refracting)
         {
             const Float ir = 1.5f;
+            if (PayLoad.FrontFace)
+            {
+                NewOrigin = Position - Offset;
+            }
+
             Float  RefractionRatio = PayLoad.FrontFace ? (1.0 / ir) : ir;
             Float3 UnitDirection   = Normalize(RayDirection);
             Float3 Refracted       = Normalize(Refract(UnitDirection, N, RefractionRatio));
@@ -256,8 +274,8 @@ void RenderImage()
 
 int main(int Argc, const char* Args[])
 {
-    UInt32 Width  = 1920;
-    UInt32 Height = 1080;
+    UInt32 Width  = WIDTH;
+    UInt32 Height = HEIGHT;
 
     Image* Output = CreateImage(Width, Height);
     
